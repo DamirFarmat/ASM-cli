@@ -20,7 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description='ASM - модульное приложение для пассивной разведки')
     parser.add_argument('--dns', action='store_true', help='Анализ email health через MXToolbox API')
     parser.add_argument('--dns-manual', action='store_true', help='Проверка DNS без API, по локальным правилам')
-    parser.add_argument('--web', action='store_true', help='Анализ веб-технологий через WhatWeb')
+    parser.add_argument('--web', action='store_true', help='Анализ веб-технологий через python-Wappalyzer (http/https)')
     parser.add_argument('--network', action='store_true', help='Проверка IP из файла через Shodan API')
     parser.add_argument('-f', '--file', type=str, help='Путь к файлу с целями (домены)')
     parser.add_argument('--json', action='store_true', help='Сохранить JSON ответы в reports/')
