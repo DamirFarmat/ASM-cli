@@ -51,7 +51,7 @@ class MXTHTMLReporter:
 </table>
 """
 
-    def wrap_global(self, sections: List[Tuple[str, str]]) -> str:
+    def wrap_global(self, sections: List[Tuple[str, str]], title: str = "Report", footer: str = "") -> str:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         items_html = []
         for idx, (dom, tbl) in enumerate(sections):
@@ -69,7 +69,7 @@ class MXTHTMLReporter:
 <head>
 <meta charset=\"UTF-8\">
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-<title>MXToolbox DNS Report</title>
+<title>{htmllib.escape(title)}</title>
 <style>
 body {{ font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background:#f7f9fb; color:#1f2937; }}
 .container {{ max-width: 1100px; margin: auto; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.04); }}
@@ -97,9 +97,9 @@ tr.timeout {{ background:#f3f4f6; }}
 </head>
 <body>
 <div class=\"container\">
-  <div class=\"header\"><h1>DNS Report</h1><div class=\"meta\">Generated: {timestamp}</div></div>
+  <div class=\"header\"><h1>{htmllib.escape(title)}</h1><div class=\"meta\">Generated: {timestamp}</div></div>
   {content}
-  <div class=\"footer\">Source: MXToolbox API</div>
+  <div class=\"footer\">{htmllib.escape(footer) if footer else ''}</div>
 </div>
 </body>
 </html>

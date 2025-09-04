@@ -106,6 +106,26 @@ python asm.py --web -f targets.txt
 python asm.py --web -f targets.txt --html
 ```
 
+### 📦 Анализ уязвимостей и EOL по веб-отчёту
+
+Использует JSON из веб-модуля и обогащает его данными об уязвимостях (NVD) и статусе поддержки/окончания жизни (endoflife.date).
+
+```bash
+# Обогащение с сохранением JSON и CSV
+python asm.py --vuln -i reports/web_analyzer_report_YYYYMMDD_HHMMSS.json \
+  --json-out reports/web_enriched.json --csv-out reports/web_enriched.csv
+
+# Можно указать API ключ NVD для бОльших лимитов
+python asm.py --vuln -i reports/web_analyzer_report_*.json --nvd-api-key YOUR_KEY
+
+# Если выходные пути не указаны, будет выведена краткая сводка в консоль
+python asm.py --vuln -i reports/web_analyzer_report_*.json
+```
+
+Источник данных:
+- CVE: NVD (`https://services.nvd.nist.gov/rest/json/cves/2.0`)
+- EOL: `https://endoflife.date/api/<product>.json`
+
 
 **Определяемые технологии:**
 - Веб-серверы (Apache, Nginx, IIS)
