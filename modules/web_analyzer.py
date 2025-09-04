@@ -155,17 +155,16 @@ class WebAnalyzer:
             
             self._display_domain_analysis(d, analysis)
 
-            # Подготавливаем данные для HTML отчета
+            # Подготавливаем данные для HTML отчета (та же таблица, что и в консоли)
             if save_html:
-                rows: List[List[str]] = []
+                rows_plain: List[List[str]] = []
                 detected: Dict[str, Dict[str, List[str]]] = analysis.get('detected', {})
                 for name, meta in sorted(detected.items()):
                     cats = ', '.join(meta.get('categories', [])) or '—'
                     vers = ', '.join(meta.get('versions', [])) or '—'
-                    rows.append(['Passed', 'Web Technology', f"{name} | {cats} | {vers}", ''])
-                if not rows:
-                    rows = [['Warning', 'Web Technologies', 'No technologies detected', '']]
-                html_sections.append((d, self.reporter.build_domain_table(rows)))
+                    rows_plain.append([name, cats, vers])
+                table_html = self.reporter.build_plain_table(['Технология', 'Категории', 'Версии'], rows_plain)
+                html_sections.append((d, table_html))
 
         # Сохраняем HTML отчет
         if save_html and html_sections:
@@ -175,7 +174,7 @@ class WebAnalyzer:
             reports_dir.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             out = reports_dir / f"web_analyzer_report_{ts}.html"
-            html = self.reporter.wrap_global(html_sections)
+            html = self.reporter.wrap_global(html_sections, title='Web Technologies Report', footer='Source: python-Wappalyzer')
             out.write_text(html, encoding='utf-8')
             print(f"\n{Fore.GREEN}HTML отчет: {out.resolve()}{Style.RESET_ALL}")
 

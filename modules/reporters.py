@@ -51,6 +51,21 @@ class MXTHTMLReporter:
 </table>
 """
 
+    def build_plain_table(self, headers: List[str], rows: List[List[str]]) -> str:
+        head_html = ''.join(f'<th>{htmllib.escape(h)}</th>' for h in headers)
+        def row_html(r: List[str]) -> str:
+            cols = ''.join(f'<td>{htmllib.escape(str(c))}</td>' for c in r)
+            return f'<tr>{cols}</tr>'
+        body = '\n'.join(row_html(r) for r in rows) if rows else '<tr><td colspan="{len(headers)}">No items</td></tr>'
+        return f"""
+<table class=\"table\">
+  <thead><tr>{head_html}</tr></thead>
+  <tbody>
+    {body}
+  </tbody>
+</table>
+"""
+
     def wrap_global(self, sections: List[Tuple[str, str]], title: str = "Report", footer: str = "") -> str:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         items_html = []
