@@ -153,7 +153,7 @@ class InternetDBNetwork:
             print(f"{Fore.RED}[{ip}] Error: {e}{Style.RESET_ALL}")
         return None
 
-    def run(self, targets: List[str], save_json: bool = False, save_html: bool = False) -> None:
+    def run(self, targets: List[str], save_json: bool = False, save_html: bool = False, json_only: bool = False) -> None:
         # Оставляем только IP-адреса, сохраняя порядок и убирая дубли
         seen = set()
         ips: List[str] = []
@@ -165,13 +165,15 @@ class InternetDBNetwork:
                 seen.add(t)
 
         if not ips:
-            print(f"{Fore.YELLOW}Во входном файле не найдено IP адресов{Style.RESET_ALL}")
+            if not json_only:
+                print(f"{Fore.YELLOW}Во входном файле не найдено IP адресов{Style.RESET_ALL}")
             return
 
-        print(f"Найдено IP для проверки через InternetDB: {len(ips)}")
+        if not json_only:
+            print(f"Найдено IP для проверки через InternetDB: {len(ips)}")
 
         reports_dir = Path("reports")
-        if save_json or save_html:
+        if (save_json or save_html) and not json_only:
             reports_dir.mkdir(parents=True, exist_ok=True)
 
         normalized_hosts: List[Dict[str, Any]] = []
@@ -188,19 +190,20 @@ class InternetDBNetwork:
                     normalized_hosts.append(host)
 
                     # Console output
-                    header = f"{Fore.CYAN}=== {ip} ==={Style.RESET_ALL}"
-                    print(f"\n{header}")
-                    summary_rows = [
-                        ["Ports", ", ".join(map(str, host.get("ports") or []))],
-                        ["Hostnames", ", ".join(host.get("hostnames") or [])],
-                        ["Tags", ", ".join(host.get("tags") or [])],
-                        ["CPEs", ", ".join(host.get("cpes") or [])],
-                        ["Vulns", ", ".join(host.get("vulns") or [])],
-                    ]
-                    print(tabulate(summary_rows, headers=["Field", "Value"], tablefmt="grid"))
+                    if not json_only:
+                        header = f"{Fore.CYAN}=== {ip} ==={Style.RESET_ALL}"
+                        print(f"\n{header}")
+                        summary_rows = [
+                            ["Ports", ", ".join(map(str, host.get("ports") or []))],
+                            ["Hostnames", ", ".join(host.get("hostnames") or [])],
+                            ["Tags", ", ".join(host.get("tags") or [])],
+                            ["CPEs", ", ".join(host.get("cpes") or [])],
+                            ["Vulns", ", ".join(host.get("vulns") or [])],
+                        ]
+                        print(tabulate(summary_rows, headers=["Field", "Value"], tablefmt="grid"))
 
                     # Save JSON per IP if requested
-                    if save_json:
+                    if save_json and not json_only:
                         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                         out = reports_dir / f"internetdb_{ip.replace(':','_')}_{ts}.json"
                         out.write_text(json.dumps(host, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -208,14 +211,21 @@ class InternetDBNetwork:
                 except Exception as e:
                     print(f"{Fore.RED}[{ip}] Error: {e}{Style.RESET_ALL}")
 
+        # Печать JSON объединённого результата всегда
+        if normalized_hosts:
+            try:
+                print(json.dumps({h.get('ip'): h for h in normalized_hosts}, ensure_ascii=False, indent=2))
+            except Exception:
+                pass
+
         # Single combined HTML
-        if save_html and normalized_hosts:
+        if save_html and normalized_hosts and not json_only:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             out_html = reports_dir / f"internetdb_network_report_{ts}.html"
             out_html.write_text(self._wrap_global_html(normalized_hosts), encoding="utf-8")
             print(f"HTML отчет: {out_html.resolve()}")
 
-        if save_json and json_paths:
+        if save_json and json_paths and not json_only:
             for p in json_paths:
                 print(f"JSON сохранен: {p}")
 

@@ -60,6 +60,7 @@ class DNSManual:
         self.resolver.tcp_attempts = 0  # Отключаем TCP fallback
         self.target_loader = TargetLoader()
         self.reporter = MXTHTMLReporter()
+        self.json_only: bool = False
         
         # Настройка обработчика сигналов для корректного завершения
         self._setup_signal_handlers()
@@ -85,16 +86,16 @@ class DNSManual:
             ans = temp_resolver.resolve(qname, rtype)
             return list(ans)
         except dns.exception.Timeout:
-            # Логируем таймауты для отладки
-            print(f"DNS timeout for {qname} {rtype}")
+            if not self.json_only:
+                print(f"DNS timeout for {qname} {rtype}")
             return None
         except dns.exception.DNSException as e:
-            # Логируем DNS ошибки
-            print(f"DNS error for {qname} {rtype}: {e}")
+            if not self.json_only:
+                print(f"DNS error for {qname} {rtype}: {e}")
             return None
         except Exception as e:
-            # Логируем прочие ошибки
-            print(f"Unexpected error for {qname} {rtype}: {e}")
+            if not self.json_only:
+                print(f"Unexpected error for {qname} {rtype}: {e}")
             return None
 
     def _txt_values(self, name: str) -> List[str]:
@@ -145,10 +146,12 @@ class DNSManual:
             resp = dns.query.udp(q, server_ip, timeout=min(self.timeout_s, 3))
             return resp
         except dns.exception.Timeout:
-            print(f"Server query timeout for {qname} {rtype} to {server_ip}")
+            if not self.json_only:
+                print(f"Server query timeout for {qname} {rtype} to {server_ip}")
             return None
         except Exception as e:
-            print(f"Server query error for {qname} {rtype} to {server_ip}: {e}")
+            if not self.json_only:
+                print(f"Server query error for {qname} {rtype} to {server_ip}: {e}")
             return None
 
     def _resolve_first_ip(self, hostname: str) -> Optional[str]:
@@ -641,7 +644,8 @@ class DNSManual:
             rows.append([c.status, c.name, c.info, c.url])
         return rows
 
-    def run(self, domains: List[str], save_html: bool = False) -> None:
+    def run(self, domains: List[str], save_html: bool = False, save_json: bool = False, json_only: bool = False) -> None:
+        self.json_only = json_only
         # Оставляем только домены, без IP, сохраняя порядок и убирая дубли
         seen: Set[str] = set()
         target_domains: List[str] = []
@@ -657,6 +661,7 @@ class DNSManual:
             return
 
         html_sections: List[Tuple[str, str]] = []
+        json_payload: Dict[str, Any] = {}
 
         def priority(s: str) -> int:
             s = (s or '').lower()
@@ -670,22 +675,38 @@ class DNSManual:
                 return 3
             return 4
 
-        print(f"Анализирую {len(target_domains)} доменов...")
+        if not json_only:
+            print(f"Анализирую {len(target_domains)} доменов...")
         
         for i, d in enumerate(target_domains, 1):
             try:
-                print(f"\n{Fore.CYAN}[{i}/{len(target_domains)}] === {d} ==={Style.RESET_ALL}")
+                if not json_only:
+                    print(f"\n{Fore.CYAN}[{i}/{len(target_domains)}] === {d} ==={Style.RESET_ALL}")
                 checks = self._analyze_domain(d)
                 rows = self._rows_from_checks(checks)
                 rows.sort(key=lambda r: (priority(r[0]), r[1]))
 
-                if rows:
-                    print(tabulate([[r[0], r[1], r[2]] for r in rows], headers=['Статус', 'Тест', 'Описание'], tablefmt='grid'))
-                else:
-                    print("Нет данных по домену")
+                if not json_only:
+                    if rows:
+                        print(tabulate([[r[0], r[1], r[2]] for r in rows], headers=['Статус', 'Тест', 'Описание'], tablefmt='grid'))
+                    else:
+                        print("Нет данных по домену")
 
                 if save_html:
                     html_sections.append((d, self.reporter.build_domain_table(rows)))
+                # Всегда накапливаем JSON для консоли/сохранения
+                json_payload[d] = {
+                    'domain': d,
+                    'checks': [
+                        {
+                            'status': r[0],
+                            'test': r[1],
+                            'description': r[2],
+                            'url': r[3],
+                        }
+                        for r in rows
+                    ],
+                }
                     
             except KeyboardInterrupt:
                 print(f"\n{Fore.YELLOW}Анализ прерван пользователем{Style.RESET_ALL}")
@@ -695,14 +716,35 @@ class DNSManual:
                 continue
 
         if save_html and html_sections:
-            from datetime import datetime
-            from pathlib import Path
-            reports_dir = Path('reports')
-            reports_dir.mkdir(parents=True, exist_ok=True)
-            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            out = reports_dir / f"dns_manual_report_{ts}.html"
-            html = self.reporter.wrap_global(html_sections)
-            out.write_text(html, encoding='utf-8')
-            print(f"HTML отчет: {out.resolve()}")
+            if not json_only:
+                from datetime import datetime
+                from pathlib import Path
+                reports_dir = Path('reports')
+                reports_dir.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                out = reports_dir / f"dns_manual_report_{ts}.html"
+                html = self.reporter.wrap_global(html_sections)
+                out.write_text(html, encoding='utf-8')
+                print(f"HTML отчет: {out.resolve()}")
+
+        # Печать JSON-результатов в консоль всегда
+        if json_payload:
+            import json as _json
+            try:
+                print(_json.dumps(json_payload, ensure_ascii=False, indent=2))
+            except Exception:
+                pass
+
+        if save_json and json_payload:
+            if not json_only:
+                from datetime import datetime as _dt
+                from pathlib import Path as _Path
+                reports_dir = _Path('reports')
+                reports_dir.mkdir(parents=True, exist_ok=True)
+                ts_json = _dt.now().strftime('%Y%m%d_%H%M%S')
+                json_path = reports_dir / f"dns_manual_report_{ts_json}.json"
+                import json as _json
+                json_path.write_text(_json.dumps(json_payload, ensure_ascii=False, indent=2), encoding='utf-8')
+                print(f"JSON отчет: {json_path.resolve()}")
 
 

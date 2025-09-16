@@ -143,6 +143,9 @@ class VulnEnricher:
 
     def enrich(self, report_json_path: Path) -> Dict[str, Any]:
         data = json.loads(report_json_path.read_text(encoding="utf-8"))
+        return self.enrich_data(data)
+
+    def enrich_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         enriched: Dict[str, Any] = {}
         for domain, blob in data.items():
             detected = (blob.get("detected") or {})

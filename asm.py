@@ -8,6 +8,7 @@ from modules.dns_manual import DNSManual
 from modules.web_analyzer import WebAnalyzer
 from modules.network import InternetDBNetwork
 from modules.vuln import VulnEnricher
+from modules.cert import TLSCertAnalyzer
 from utils.target_loader import TargetLoader
 
 
@@ -21,12 +22,17 @@ def main():
     parser = argparse.ArgumentParser(description='ASM - модульное приложение для пассивной разведки')
     parser.add_argument('--dns', action='store_true', help='Анализ email health через MXToolbox API')
     parser.add_argument('--dns-manual', action='store_true', help='Проверка DNS без API, по локальным правилам')
-    parser.add_argument('--web', action='store_true', help='Анализ веб-технологий через python-Wappalyzer (http/https)')
+    parser.add_argument('--web', action='store_true', help='Комбинированный веб-анализ: технологии + уязвимости/EOL (как --web + --vuln)')
+    parser.add_argument('--web-version', action='store_true', help='Только анализ веб-технологий (как раньше --web)')
     parser.add_argument('--network', action='store_true', help='Проверка IP из файла через Shodan API')
     parser.add_argument('--vuln', action='store_true', help='Анализ уязвимостей и EOL на основе web JSON отчёта')
-    parser.add_argument('-f', '--file', type=str, help='Путь к файлу с целями (домены)')
+    parser.add_argument('--cert', action='store_true', help='Проверка TLS/SSL: версии протокола и срок действия сертификата')
+    parser.add_argument('-f', '--file', type=str, help='Путь к файлу с целями (домены/IP)')
     parser.add_argument('--json', action='store_true', help='Сохранить JSON ответы в reports/')
     parser.add_argument('--html', action='store_true', help='Сохранить один HTML-отчет по всем доменам в reports/')
+    parser.add_argument('--json-only', action='store_true', help='Выводить в терминал только JSON без дополнительных строк')
+    # Позиционные цели: можно передать домены/IP напрямую без файла
+    parser.add_argument('targets', nargs='*', help='Цели напрямую (домены или IP), напр.: example.com 8.8.8.8')
     # Опции для --vuln
     parser.add_argument('-i', '--input', type=str, help='Путь к web_analyzer_report_*.json для --vuln')
     parser.add_argument('--json-out', type=str, help='Куда сохранить обогащённый JSON (для --vuln)')
@@ -40,9 +46,13 @@ def main():
         load_dotenv(env_path, override=True)
 
     if args.dns:
-        if not args.file:
-            parser.error('Для --dns укажите файл целей -f targets.txt')
-        all_targets = read_targets(args.file)
+        # Загружаем цели из файла или берём позиционные аргументы
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --dns укажите -f targets.txt или перечислите домены напрямую')
         loader = TargetLoader()
         # фильтруем только домены
         domains: List[str] = [
@@ -50,56 +60,87 @@ def main():
             if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
         ]
         if not domains:
-            print('Во входном файле нет валидных доменов для --dns')
+            print('Не найдено валидных доменов для --dns')
             return
         client = MXToolboxDNS()
         client.run(domains, save_json=args.json, save_html=args.html)
         return
 
     if args.dns_manual:
-        if not args.file:
-            parser.error('Для --dns-manual укажите файл целей -f targets.txt')
-        all_targets = read_targets(args.file)
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --dns-manual укажите -f targets.txt или перечислите домены напрямую')
         loader = TargetLoader()
         domains: List[str] = [
             t for t in all_targets
             if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
         ]
         if not domains:
-            print('Во входном файле нет валидных доменов для --dns-manual')
+            print('Не найдено валидных доменов для --dns-manual')
             return
         client = DNSManual()
-        client.run(domains, save_html=args.html)
+        client.run(domains, save_html=(False if args.json_only else args.html), save_json=(args.json and not args.json_only), json_only=args.json_only)
         return
 
-    if args.web and not args.vuln:
-        if not args.file:
-            parser.error('Для --web укажите файл целей -f targets.txt')
-        all_targets = read_targets(args.file)
+    if args.web_version:
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --web-version укажите -f targets.txt или перечислите домены напрямую')
         loader = TargetLoader()
         domains: List[str] = [
             t for t in all_targets
             if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
         ]
         if not domains:
-            print('Во входном файле нет валидных доменов для --web')
+            print('Не найдено валидных доменов для --web-version')
             return
         client = WebAnalyzer()
-        client.run(domains, save_html=args.html)
+        results = client.run(domains, save_html=(False if args.json_only else args.html), json_only=args.json_only)
+        if args.json_only:
+            import json as _json
+            print(_json.dumps(results or {}, ensure_ascii=False, indent=2))
         return
 
     if args.network:
-        if not args.file:
-            parser.error('Для --network укажите файл целей -f targets.txt')
-        all_targets = read_targets(args.file)
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --network укажите -f targets.txt или перечислите IP напрямую')
         loader = TargetLoader()
         # фильтруем только IP
         ips: List[str] = [t for t in all_targets if loader._is_valid_ip(t)]
         if not ips:
-            print('Во входном файле нет валидных IP для --network')
+            print('Не найдено валидных IP для --network')
             return
         client = InternetDBNetwork()
-        client.run(ips, save_json=args.json, save_html=args.html)
+        client.run(ips, save_json=(args.json and not args.json_only), save_html=(False if args.json_only else args.html), json_only=args.json_only)
+        return
+
+    if args.cert:
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --cert укажите -f targets.txt или перечислите домены напрямую')
+        loader = TargetLoader()
+        domains: List[str] = [
+            t for t in all_targets
+            if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
+        ]
+        if not domains:
+            print('Не найдено валидных доменов для --cert')
+            return
+        client = TLSCertAnalyzer()
+        client.run(domains, save_json=args.json, save_html=args.html)
         return
 
     if args.vuln and not args.web:
@@ -125,37 +166,41 @@ def main():
                         print(f"  - {product} {ver}: CVE={len(vulns)}, supported={eol.get('supported')}")
         return
 
-    # Комбинированный режим: --web --vuln (и можно --html)
-    if args.web and args.vuln:
-        if not args.file:
-            parser.error('Для --web/--vuln укажите файл целей -f targets.txt')
-        # 1) запускаем веб-скан с сохранением JSON (всегда сохраняем)
-        all_targets = read_targets(args.file)
+    # Комбинированный режим теперь по умолчанию на --web (и можно --html)
+    if args.web:
+        # 1) цели из файла или позиционные
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --web укажите -f targets.txt или перечислите домены напрямую')
         loader = TargetLoader()
         domains: List[str] = [
             t for t in all_targets
             if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
         ]
         if not domains:
-            print('Во входном файле нет валидных доменов для --web/--vuln')
+            print('Не найдено валидных доменов для --web')
             return
         web = WebAnalyzer()
-        # Сохраняем HTML, если запрошено, и JSON (он всегда сохраняется внутри web.run)
-        web.run(domains, save_html=args.html)
-        # 2) находим самый свежий web_analyzer_report_*.json
-        from pathlib import Path
-        reports_dir = Path('reports')
-        latest_json = None
-        if reports_dir.exists():
-            candidates = sorted(reports_dir.glob('web_analyzer_report_*.json'))
-            if candidates:
-                latest_json = candidates[-1]
-        if not latest_json:
-            print('Не найден JSON отчёт веб-сканирования для обогащения')
+        # HTML сохраняем опционально; JSON не сохраняется, результаты возвращаются
+        web_results = web.run(domains, save_html=(False if args.json_only else args.html), json_only=args.json_only)
+        if not web_results:
+            if args.json_only:
+                import json as _json
+                print(_json.dumps({}, ensure_ascii=False, indent=2))
             return
-        # 3) обогащаем уязвимостями/EOL
+        # 2) обогащаем уязвимостями/EOL в памяти
         enricher = VulnEnricher(nvd_api_key=args.nvd_api_key)
-        enriched = enricher.enrich(latest_json)
+        enriched = enricher.enrich_data(web_results)
+        if args.json_only:
+            try:
+                import json as _json
+                print(_json.dumps(enriched, ensure_ascii=False, indent=2))
+            except Exception:
+                pass
+            return
         # 4) формируем HTML раздел с рекомендациями
         from modules.reporters import MXTHTMLReporter
         reporter = MXTHTMLReporter()
@@ -180,6 +225,9 @@ def main():
                     rows.append([severity, 'Vulnerability/EOL', info_text, ''])
             sections.append((domain, reporter.build_domain_table(rows)))
         if args.html:
+            from pathlib import Path
+            reports_dir = Path('reports')
+            reports_dir.mkdir(parents=True, exist_ok=True)
             out_html = reports_dir / 'web_vuln_recommendations.html'
             html = reporter.wrap_global(sections, title='Web Vulnerabilities & EOL Recommendations', footer='Sources: NVD, endoflife.date')
             out_html.write_text(html, encoding='utf-8')
@@ -194,6 +242,27 @@ def main():
                         eol = info.get('eol', {})
                         vulns = info.get('vulnerabilities', [])
                         print(f"  - {product} {ver}: CVE={len(vulns)}, supported={eol.get('supported')}")
+        # 5) JSON-сводка по рекомендациям (для машинного потребления)
+        try:
+            summary_json = {}
+            for domain, payload in enriched.items():
+                items = []
+                enr = payload.get('enriched', {})
+                for product, versions in enr.items():
+                    for ver, info in versions.items():
+                        eol = info.get('eol', {})
+                        vulns = info.get('vulnerabilities', [])
+                        items.append({
+                            'product': product,
+                            'version': ver,
+                            'cve_count': len(vulns),
+                            'supported': eol.get('supported'),
+                        })
+                summary_json[domain] = items
+            import json as _json
+            print(_json.dumps({'vuln_summary': summary_json}, ensure_ascii=False, indent=2))
+        except Exception:
+            pass
         return
 
     parser.print_help()

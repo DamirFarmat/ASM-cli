@@ -81,8 +81,11 @@ python asm.py --dns -f targets.txt --html
 ### Ручной DNS-анализ (без API)
 
 ```bash
-# Базовый анализ
+# Базовый анализ из файла
 python asm.py --dns-manual -f targets.txt
+
+# Базовый анализ с прямой передачей домена
+python asm.py --dns-manual example.com
 
 # С генерацией HTML-отчета
 python asm.py --dns-manual -f targets.txt --html
@@ -99,11 +102,17 @@ python asm.py --dns-manual -f targets.txt --html
 ### Веб-анализатор
 
 ```bash
-# Базовый анализ
+# Комбинированный анализ (из файла или напрямую)
 python asm.py --web -f targets.txt
+python asm.py --web example.com
 
-# С генерацией HTML-отчета
+# Только анализ технологий (как раньше --web)
+python asm.py --web-version -f targets.txt
+python asm.py --web-version example.com
+
+# С генерацией HTML-отчетов
 python asm.py --web -f targets.txt --html
+python asm.py --web-version -f targets.txt --html
 ```
 
 ### 📦 Анализ уязвимостей и EOL по веб-отчёту
@@ -138,14 +147,28 @@ python asm.py --vuln -i reports/web_analyzer_report_*.json
 ### Сетевая разведка IP-адресов
 
 ```bash
-# Базовый анализ
+# Базовый анализ (из файла или напрямую)
 python asm.py --network -f targets.txt
+python asm.py --network 8.8.8.8 1.1.1.1
 
 # С сохранением JSON ответов
 python asm.py --network -f targets.txt --json
 
 # С генерацией HTML-отчета
 python asm.py --network -f targets.txt --html
+```
+
+### 🔐 Проверка TLS/SSL сертификатов
+
+Проверяет поддерживаемые версии TLS (1.0/1.1/1.2/1.3) и срок действия сертификата (предупреждение, если истекает в течение 30 дней; ошибка, если просрочен). Формирует консольный вывод, JSON и/или HTML.
+
+```bash
+# Базовая проверка сертификатов (из файла или напрямую)
+python asm.py --cert -f targets.txt
+python asm.py --cert example.com github.com
+
+# С HTML и JSON отчётами
+python asm.py --cert -f targets.txt --html --json
 ```
 
 **Получаемая информация:**
