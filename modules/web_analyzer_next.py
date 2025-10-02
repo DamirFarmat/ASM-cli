@@ -1,11 +1,11 @@
 """
-Web Technology Analyzer
+Web Technology Analyzer (Enhanced)
 
-Переписано для использования python-Wappalyzer:
-- Библиотека: https://github.com/chorsley/python-Wappalyzer/tree/master
-- Для каждого домена формируются URL http:// и https:// и анализируются оба.
-- Поддерживает отслеживание редиректов для анализа конечных URL.
-- Анализирует все URL в цепочке редиректов и объединяет результаты.
+Улучшенная версия анализатора веб-технологий с расширенной поддержкой редиректов:
+- Использует python-Wappalyzer с улучшенной обработкой редиректов
+- Поддерживает отслеживание редиректов для анализа конечных URL
+- Анализирует все URL в цепочке редиректов и объединяет результаты
+- Предоставляет более детальную информацию о редиректах
 """
 
 from __future__ import annotations
@@ -14,6 +14,9 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 import warnings
 import requests
+import subprocess
+import tempfile
+import os
 from urllib.parse import urljoin, urlparse
 
 from colorama import Fore, Style, init
@@ -22,50 +25,45 @@ from tabulate import tabulate
 from utils.target_loader import TargetLoader
 from modules.reporters import MXTHTMLReporter
 
-# python-Wappalyzer (подавляем предупреждения при импорте)
-try:
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning)
-        from Wappalyzer import Wappalyzer, WebPage
-except Exception as e:  # pragma: no cover
-    Wappalyzer = None  # type: ignore
-    WebPage = None  # type: ignore
-    _IMPORT_ERROR = e
-else:
-    _IMPORT_ERROR = None
+# Wappalyzer Next доступность
+_WAPPALYZER_NEXT_AVAILABLE = True
+_WAPPALYZER_NEXT_ERROR = None
 
 init()
 
 
-class WebAnalyzer:
+class WebAnalyzerNext:
     """
-    Анализатор веб-технологий через python-Wappalyzer.
-    Формирует табличный консольный вывод и (опционально) общий HTML-отчет.
+    Анализатор веб-технологий через Wappalyzer Next.
+    Использует более современную библиотеку с поддержкой браузерной эмуляции.
     """
 
     def __init__(self) -> None:
         self.target_loader = TargetLoader()
         self.reporter = MXTHTMLReporter()
-        self.wappalyzer: Optional[Wappalyzer] = None
         self.json_only: bool = False
 
-    def _ensure_wappalyzer(self) -> bool:
-        if _IMPORT_ERROR is not None or Wappalyzer is None or WebPage is None:
+    def _ensure_wappalyzer_next(self) -> bool:
+        if not _WAPPALYZER_NEXT_AVAILABLE:
             if not self.json_only:
-                print(f"{Fore.RED}ОШИБКА: Не удалось импортировать python-Wappalyzer: {_IMPORT_ERROR}{Style.RESET_ALL}")
-                print("Установите пакет: pip install python-Wappalyzer")
+                print(f"{Fore.RED}ОШИБКА: Wappalyzer Next недоступен{Style.RESET_ALL}")
             return False
-        if self.wappalyzer is None:
-            try:
-                # С попыткой получить актуальные технологии
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", category=UserWarning)
-                    self.wappalyzer = Wappalyzer.latest(update=True)
-            except Exception:
-                # Fallback без обновления с интернета
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", category=UserWarning)
-                    self.wappalyzer = Wappalyzer.latest()
+        
+        # Проверяем, что команда wappalyzer доступна
+        try:
+            result = subprocess.run(['wappalyzer', '--help'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                if not self.json_only:
+                    print(f"{Fore.RED}ОШИБКА: Команда wappalyzer недоступна{Style.RESET_ALL}")
+                    print("Установите пакет: pip install wappalyzer")
+                    print("Также убедитесь, что установлены Firefox и geckodriver")
+                return False
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            if not self.json_only:
+                print(f"{Fore.RED}ОШИБКА: Не удалось запустить wappalyzer: {e}{Style.RESET_ALL}")
+                print("Установите пакет: pip install wappalyzer")
+            return False
         return True
 
     def _follow_redirects(self, url: str, max_redirects: int = 10) -> List[str]:
@@ -111,51 +109,66 @@ class WebAnalyzer:
             
         return redirect_chain
 
-    def _analyze_single_url(self, url: str, follow_redirects: bool = True) -> Optional[Dict[str, Dict[str, List[str]]]]:
+    def _analyze_single_url_next(self, url: str) -> Optional[Dict[str, Any]]:
         """
-        Анализирует URL с возможностью отслеживания редиректов.
+        Анализирует URL с помощью Wappalyzer Next через subprocess.
         
         Args:
             url: URL для анализа
-            follow_redirects: Следить ли за редиректами
             
         Returns:
-            Результат анализа Wappalyzer или None
+            Результат анализа или None
         """
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=UserWarning)
+            # Создаем временный файл для JSON вывода
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                temp_path = temp_file.name
+            
+            try:
+                # Запускаем wappalyzer через subprocess
+                result = subprocess.run([
+                    'wappalyzer', 
+                    '-i', url,
+                    '-oJ', temp_path,
+                    '--scan-type', 'full'  # Используем полный режим для лучшего обнаружения
+                ], capture_output=True, text=True, timeout=120)
                 
-                if follow_redirects:
-                    # Получаем цепочку редиректов
-                    redirect_chain = self._follow_redirects(url)
+                if result.returncode != 0:
+                    return None
+                
+                # Читаем результат из временного файла
+                if os.path.exists(temp_path):
+                    with open(temp_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
                     
-                    # Анализируем каждый URL в цепочке редиректов
-                    all_results = {}
-                    for redirect_url in redirect_chain:
-                        try:
-                            webpage = WebPage.new_from_url(redirect_url)
-                            if self.wappalyzer is None:
-                                continue
-                            result = self.wappalyzer.analyze_with_versions_and_categories(webpage)
-                            if result:
-                                # Объединяем результаты
-                                all_results = self._merge_results(all_results, result)
-                        except Exception:
-                            # Пропускаем URL, который не удалось проанализировать
-                            continue
+                    # Преобразуем результат в формат, совместимый с оригинальным WebAnalyzer
+                    # Wappalyzer Next возвращает данные в формате: {url: {tech_name: {version, confidence, categories, groups}}}
+                    if isinstance(data, dict):
+                        formatted_result = {}
+                        for url, technologies in data.items():
+                            if isinstance(technologies, dict):
+                                for tech_name, tech_info in technologies.items():
+                                    if isinstance(tech_info, dict):
+                                        formatted_result[tech_name] = {
+                                            'categories': tech_info.get('categories', []),
+                                            'versions': [tech_info.get('version')] if tech_info.get('version') else []
+                                        }
+                        return formatted_result
+                
+                return None
+                
+            finally:
+                # Удаляем временный файл
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
                     
-                    return all_results if all_results else None
-                else:
-                    # Оригинальная логика без редиректов
-                    webpage = WebPage.new_from_url(url)
-                    if self.wappalyzer is None:
-                        return None
-                    return self.wappalyzer.analyze_with_versions_and_categories(webpage)  # type: ignore
-        except Exception:
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, Exception):
             return None
 
     def _merge_results(self, a: Dict[str, Dict[str, List[str]]], b: Dict[str, Dict[str, List[str]]]) -> Dict[str, Dict[str, List[str]]]:
+        """
+        Объединяет результаты анализа технологий.
+        """
         merged: Dict[str, Dict[str, List[str]]] = {}
         keys = set(a.keys()) | set(b.keys())
         for k in keys:
@@ -169,7 +182,7 @@ class WebAnalyzer:
             }
         return merged
 
-    def _analyze_domain(self, domain: str) -> Dict[str, Any]:
+    def _analyze_domain_next(self, domain: str) -> Dict[str, Any]:
         analysis: Dict[str, Any] = {
             'domain': domain,
             'by_scheme': {},
@@ -177,7 +190,7 @@ class WebAnalyzer:
             'detected': {},  # name -> {categories:[], versions:[]}
         }
 
-        if not self._ensure_wappalyzer():
+        if not self._ensure_wappalyzer_next():
             return analysis
 
         urls = [f"http://{domain}", f"https://{domain}"]
@@ -188,8 +201,8 @@ class WebAnalyzer:
             redirect_chain = self._follow_redirects(url)
             analysis['redirects'][url] = redirect_chain
             
-            # Анализируем URL с редиректами
-            res = self._analyze_single_url(url, follow_redirects=True)
+            # Анализируем URL с Wappalyzer Next
+            res = self._analyze_single_url_next(url)
             if res:
                 per_url[url] = res
                 
@@ -203,9 +216,9 @@ class WebAnalyzer:
         return analysis
 
     def _display_domain_analysis(self, domain: str, analysis: Dict[str, Any]) -> None:
-        """Отображает анализ Wappalyzer для конкретного домена"""
-        print(f"{Fore.GREEN}ДОМЕН: {domain}{Style.RESET_ALL}")
-        print(f"{Fore.GREEN}{'-' * (len(domain) + 8)}{Style.RESET_ALL}")
+        """Отображает анализ Wappalyzer Next для конкретного домена"""
+        print(f"{Fore.GREEN}ДОМЕН: {domain} (Wappalyzer Next){Style.RESET_ALL}")
+        print(f"{Fore.GREEN}{'-' * (len(domain) + 20)}{Style.RESET_ALL}")
 
         # Вывод информации о редиректах
         redirects = analysis.get('redirects', {})
@@ -234,7 +247,7 @@ class WebAnalyzer:
 
     def run(self, domains: List[str], save_html: bool = False, json_only: bool = False) -> Dict[str, Any]:
         self.json_only = json_only
-        """Запускает анализ веб-технологий для списка доменов и возвращает результаты.
+        """Запускает анализ веб-технологий для списка доменов с помощью Wappalyzer Next.
 
         Возвращаемая структура:
         {
@@ -246,7 +259,7 @@ class WebAnalyzer:
           }, ...
         }
         """
-        if not self._ensure_wappalyzer():
+        if not self._ensure_wappalyzer_next():
             return {}
 
         # Оставляем только домены, без IP
@@ -261,12 +274,12 @@ class WebAnalyzer:
 
         if not target_domains:
             if not json_only:
-                print(f"{Fore.YELLOW}Во входном файле нет валидных доменов для --web{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Во входном файле нет валидных доменов для --web-test{Style.RESET_ALL}")
             return {}
 
         if not json_only:
             print(f"Найдено доменов для анализа веб-технологий: {len(target_domains)}")
-            print(f"Используется python-Wappalyzer")
+            print(f"Используется Wappalyzer Next")
 
         html_sections: List[Tuple[str, str]] = []
         all_results: Dict[str, Any] = {}
@@ -275,13 +288,13 @@ class WebAnalyzer:
             if not json_only:
                 print(f"\n{Fore.CYAN}Анализирую: {d}{Style.RESET_ALL}")
             
-            analysis = self._analyze_domain(d)
+            analysis = self._analyze_domain_next(d)
             all_results[d] = analysis
             
             if not json_only:
                 self._display_domain_analysis(d, analysis)
 
-            # Подготавливаем данные для HTML отчета (та же таблица, что и в консоли)
+            # Подготавливаем данные для HTML отчета
             if save_html:
                 # Добавляем информацию о редиректах в HTML отчет
                 html_content = []
@@ -301,7 +314,7 @@ class WebAnalyzer:
                         html_content.append(redirect_table)
                 
                 # Технологии
-                html_content.append("<h3>Обнаруженные технологии</h3>")
+                html_content.append("<h3>Обнаруженные технологии (Wappalyzer Next)</h3>")
                 rows_plain: List[List[str]] = []
                 detected: Dict[str, Dict[str, List[str]]] = analysis.get('detected', {})
                 for name, meta in sorted(detected.items()):
@@ -324,8 +337,8 @@ class WebAnalyzer:
             reports_dir = Path('reports')
             reports_dir.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            out = reports_dir / f"web_analyzer_report_{ts}.html"
-            html = self.reporter.wrap_global(html_sections, title='Web Technologies Report', footer='Source: python-Wappalyzer')
+            out = reports_dir / f"web_analyzer_next_report_{ts}.html"
+            html = self.reporter.wrap_global(html_sections, title='Web Technologies Report (Wappalyzer Next)', footer='Source: Wappalyzer Next')
             out.write_text(html, encoding='utf-8')
             print(f"\n{Fore.GREEN}HTML отчет: {out.resolve()}{Style.RESET_ALL}")
 

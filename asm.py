@@ -6,10 +6,12 @@ from dotenv import load_dotenv, find_dotenv
 from modules.mxtoolbox_dns import MXToolboxDNS
 from modules.dns_manual import DNSManual
 from modules.web_analyzer import WebAnalyzer
+from modules.web_analyzer_next import WebAnalyzerNext
 from modules.network import InternetDBNetwork
 from modules.vuln import VulnEnricher
 from modules.cert import TLSCertAnalyzer
 from utils.target_loader import TargetLoader
+from modules.header_analyzer import HeaderAnalyzer
 
 
 def read_targets(file_path: str) -> List[str]:
@@ -24,7 +26,9 @@ def main():
     parser.add_argument('--dns-manual', action='store_true', help='Проверка DNS без API, по локальным правилам')
     parser.add_argument('--web', action='store_true', help='Комбинированный веб-анализ: технологии + уязвимости/EOL (как --web + --vuln)')
     parser.add_argument('--web-version', action='store_true', help='Только анализ веб-технологий (как раньше --web)')
+    parser.add_argument('--web-test', action='store_true', help='Анализ веб-технологий с помощью Wappalyzer Next (современная библиотека с браузерной эмуляцией)')
     parser.add_argument('--network', action='store_true', help='Проверка IP из файла через Shodan API')
+    parser.add_argument('--header', action='store_true', help='Проверка безопасности HTTP заголовков (HSTS, CSP, XFO и др.)')
     parser.add_argument('--vuln', action='store_true', help='Анализ уязвимостей и EOL на основе web JSON отчёта')
     parser.add_argument('--cert', action='store_true', help='Проверка TLS/SSL: версии протокола и срок действия сертификата')
     parser.add_argument('-f', '--file', type=str, help='Путь к файлу с целями (домены/IP)')
@@ -107,6 +111,28 @@ def main():
             print(_json.dumps(results or {}, ensure_ascii=False, indent=2))
         return
 
+    if args.web_test:
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --web-test укажите -f targets.txt или перечислите домены напрямую')
+        loader = TargetLoader()
+        domains: List[str] = [
+            t for t in all_targets
+            if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
+        ]
+        if not domains:
+            print('Не найдено валидных доменов для --web-test')
+            return
+        client = WebAnalyzerNext()
+        results = client.run(domains, save_html=(False if args.json_only else args.html), json_only=args.json_only)
+        if args.json_only:
+            import json as _json
+            print(_json.dumps(results or {}, ensure_ascii=False, indent=2))
+        return
+
     if args.network:
         if args.file:
             all_targets = read_targets(args.file)
@@ -122,6 +148,28 @@ def main():
             return
         client = InternetDBNetwork()
         client.run(ips, save_json=(args.json and not args.json_only), save_html=(False if args.json_only else args.html), json_only=args.json_only)
+        return
+
+    if args.header:
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --header укажите -f targets.txt или перечислите домены напрямую')
+        loader = TargetLoader()
+        domains: List[str] = [
+            t for t in all_targets
+            if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
+        ]
+        if not domains:
+            print('Не найдено валидных доменов для --header')
+            return
+        client = HeaderAnalyzer()
+        results = client.run(domains, save_html=(False if args.json_only else args.html), json_only=args.json_only)
+        if args.json_only:
+            import json as _json
+            print(_json.dumps(results or {}, ensure_ascii=False, indent=2))
         return
 
     if args.cert:

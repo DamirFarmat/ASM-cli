@@ -51,10 +51,17 @@ class MXTHTMLReporter:
 </table>
 """
 
-    def build_plain_table(self, headers: List[str], rows: List[List[str]]) -> str:
+    def build_plain_table(self, headers: List[str], rows: List[List[str]], raw_html_cols: List[int] | None = None) -> str:
         head_html = ''.join(f'<th>{htmllib.escape(h)}</th>' for h in headers)
+        raw_set = set(raw_html_cols or [])
         def row_html(r: List[str]) -> str:
-            cols = ''.join(f'<td>{htmllib.escape(str(c))}</td>' for c in r)
+            tds = []
+            for idx, c in enumerate(r):
+                if idx in raw_set:
+                    tds.append(f'<td>{str(c)}</td>')
+                else:
+                    tds.append(f'<td>{htmllib.escape(str(c))}</td>')
+            cols = ''.join(tds)
             return f'<tr>{cols}</tr>'
         body = '\n'.join(row_html(r) for r in rows) if rows else '<tr><td colspan="{len(headers)}">No items</td></tr>'
         return f"""
