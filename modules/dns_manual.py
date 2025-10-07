@@ -238,6 +238,16 @@ class DNSManual:
             results.append((ns, ip, bool(aa), r))
         return results, down
 
+    def _fallback_soa_recursive(self, domain: str) -> Optional[Any]:
+        """Рекурсивный фолбэк: получить SOA через системный резолвер, если авторитативные NS не ответили."""
+        try:
+            ans = self._safe_resolve(domain, 'SOA') or []
+            if ans:
+                return ans[0]
+        except Exception:
+            pass
+        return None
+
     # --------------- checks -----------------
     def _check_ns_count(self, ns_hosts: List[str]) -> CheckItem:
         if len(ns_hosts) >= 2:
@@ -615,6 +625,13 @@ class DNSManual:
 
         soa_results, down = self._soa_from_all_ns(domain, child_ns)
         soa_records = [soa for (_ns, _ip, _aa, soa) in soa_results if soa is not None]
+        if not soa_records:
+            # Фолбэк: попробуем получить SOA через рекурсивный резолвер
+            fb_soa = self._fallback_soa_recursive(domain)
+            if fb_soa is not None:
+                # Добавим синтетический источник, чтобы включить SOA-проверки
+                soa_results.append(("recursive-resolver", None, False, fb_soa))
+                soa_records.append(fb_soa)
 
         # Core DNS checks
         checks.append(self._check_ns_count(child_ns))

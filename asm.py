@@ -28,7 +28,7 @@ def main():
     parser.add_argument('--web-version', action='store_true', help='Только анализ веб-технологий (как раньше --web)')
     parser.add_argument('--web-test', action='store_true', help='Анализ веб-технологий с помощью Wappalyzer Next (современная библиотека с браузерной эмуляцией)')
     parser.add_argument('--network', action='store_true', help='Проверка IP из файла через Shodan API')
-    parser.add_argument('--header', action='store_true', help='Проверка безопасности HTTP заголовков (HSTS, CSP, XFO и др.)')
+    parser.add_argument('--headers', action='store_true', help='Проверка безопасности HTTP заголовков (HSTS, CSP, XFO и др.)')
     parser.add_argument('--vuln', action='store_true', help='Анализ уязвимостей и EOL на основе web JSON отчёта')
     parser.add_argument('--cert', action='store_true', help='Проверка TLS/SSL: версии протокола и срок действия сертификата')
     parser.add_argument('-f', '--file', type=str, help='Путь к файлу с целями (домены/IP)')
@@ -150,20 +150,20 @@ def main():
         client.run(ips, save_json=(args.json and not args.json_only), save_html=(False if args.json_only else args.html), json_only=args.json_only)
         return
 
-    if args.header:
+    if args.headers:
         if args.file:
             all_targets = read_targets(args.file)
         else:
             all_targets = args.targets or []
         if not all_targets:
-            parser.error('Для --header укажите -f targets.txt или перечислите домены напрямую')
+            parser.error('Для --headers укажите -f targets.txt или перечислите домены напрямую')
         loader = TargetLoader()
         domains: List[str] = [
             t for t in all_targets
             if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
         ]
         if not domains:
-            print('Не найдено валидных доменов для --header')
+            print('Не найдено валидных доменов для --headers')
             return
         client = HeaderAnalyzer()
         results = client.run(domains, save_html=(False if args.json_only else args.html), json_only=args.json_only)

@@ -27,6 +27,7 @@ from colorama import Fore, Style, init
 from tabulate import tabulate
 
 from utils.target_loader import TargetLoader
+from utils.url_resolver import resolve_browser_like_url
 from modules.reporters import MXTHTMLReporter
 
 
@@ -37,8 +38,10 @@ class HeaderAnalyzer:
     def __init__(self) -> None:
         self.target_loader = TargetLoader()
         self.reporter = MXTHTMLReporter()
+        self._last_fetch_timed_out: bool = False
 
     def _fetch(self, url: string) -> Optional[requests.Response]:  # type: ignore[name-defined]
+        self._last_fetch_timed_out = False
         try:
             session = requests.Session()
             session.headers.update({
@@ -46,8 +49,12 @@ class HeaderAnalyzer:
                                'AppleWebKit/537.36 (KHTML, like Gecko) '
                                'Chrome/124.0 Safari/537.36'
             })
-            resp = session.get(url, timeout=20, allow_redirects=True)
+            # Separate connect/read timeouts to avoid hanging TCP/TLS handshakes
+            resp = session.get(url, timeout=(10, 50), allow_redirects=True)
             return resp
+        except requests.exceptions.Timeout:
+            self._last_fetch_timed_out = True
+            return None
         except requests.RequestException:
             return None
 
@@ -169,6 +176,8 @@ class HeaderAnalyzer:
     def _analyze_url(self, url: str) -> Dict[str, Any]:
         resp = self._fetch(url)
         if not resp:
+            if self._last_fetch_timed_out:
+                return {'url': url, 'ok': False, 'error': 'timeout', 'note': '(timeout in asm)'}
             return {'url': url, 'ok': False, 'error': 'request_failed'}
         is_https = url.lower().startswith('https://') or resp.url.lower().startswith('https://')
         results = self._evaluate_headers(resp.headers or {}, is_https=is_https)
@@ -184,7 +193,8 @@ class HeaderAnalyzer:
         print(f"{Fore.GREEN}ДОМЕН: {domain}{Style.RESET_ALL}")
         print(f"{Fore.GREEN}{'-' * (len(domain) + 8)}{Style.RESET_ALL}")
         for url, payload in per_url.items():
-            print(f"\n{Fore.BLUE}{url}{Style.RESET_ALL}")
+            label = f" {Fore.YELLOW}(timeout in asm){Style.RESET_ALL}" if payload.get('error') == 'timeout' else ''
+            print(f"\n{Fore.BLUE}{url}{Style.RESET_ALL}{label}")
             if not payload or not payload.get('findings'):
                 print('  Нет данных')
                 continue
@@ -206,7 +216,7 @@ class HeaderAnalyzer:
 
         if not target_domains:
             if not json_only:
-                print(f"{Fore.YELLOW}Во входном списке нет валидных доменов для --header{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Во входном списке нет валидных доменов для --headers{Style.RESET_ALL}")
             return {}
 
         if not json_only:
@@ -219,10 +229,9 @@ class HeaderAnalyzer:
             if not json_only:
                 print(f"\n{Fore.CYAN}Проверяю: {d}{Style.RESET_ALL}")
 
-            urls = [f"http://{d}", f"https://{d}"]
-            per_url: Dict[str, Any] = {}
-            for url in urls:
-                per_url[url] = self._analyze_url(url)
+            # Resolve a single browser-like URL and analyze only it
+            resolved_url = resolve_browser_like_url(d, timeout_s=20)
+            per_url: Dict[str, Any] = {resolved_url: self._analyze_url(resolved_url)}
 
             all_results[d] = {
                 'domain': d,

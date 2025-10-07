@@ -20,6 +20,7 @@ from colorama import Fore, Style, init
 from tabulate import tabulate
 
 from utils.target_loader import TargetLoader
+from utils.url_resolver import resolve_browser_like_url
 from modules.reporters import MXTHTMLReporter
 
 # python-Wappalyzer (подавляем предупреждения при импорте)
@@ -90,8 +91,8 @@ class WebAnalyzer:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             })
             
-            # Выполняем запрос с отслеживанием редиректов
-            response = session.get(current_url, timeout=10, allow_redirects=True)
+            # Выполняем запрос с отслеживанием редиректов, разделяя connect/read таймауты
+            response = session.get(current_url, timeout=(10, 50), allow_redirects=True)
             
             # Получаем историю редиректов
             for resp in response.history:
@@ -102,6 +103,9 @@ class WebAnalyzer:
             if response.url not in redirect_chain:
                 redirect_chain.append(response.url)
                 
+        except requests.exceptions.Timeout:
+            # Помечаем таймаут в цепочке
+            redirect_chain.append('timeout in asm')
         except requests.exceptions.RequestException:
             # В случае ошибки возвращаем только исходный URL
             pass
@@ -180,19 +184,19 @@ class WebAnalyzer:
         if not self._ensure_wappalyzer():
             return analysis
 
-        urls = [f"http://{domain}", f"https://{domain}"]
+        # Resolve a single browser-like URL and analyze only it
+        resolved_url = resolve_browser_like_url(domain, timeout_s=10)
+
+        # Получаем цепочку редиректов для отображения
+        redirect_chain = self._follow_redirects(resolved_url)
+        analysis['redirects'][resolved_url] = redirect_chain
+
+        # Анализируем URL с редиректами
         per_url: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
-        
-        for url in urls:
-            # Получаем цепочку редиректов для отображения
-            redirect_chain = self._follow_redirects(url)
-            analysis['redirects'][url] = redirect_chain
-            
-            # Анализируем URL с редиректами
-            res = self._analyze_single_url(url, follow_redirects=True)
-            if res:
-                per_url[url] = res
-                
+        res = self._analyze_single_url(resolved_url, follow_redirects=True)
+        if res:
+            per_url[resolved_url] = res
+
         analysis['by_scheme'] = per_url
 
         # Слить по домену
@@ -221,7 +225,11 @@ class WebAnalyzer:
 
         # Вывод по схемам
         for url, res in analysis.get('by_scheme', {}).items():
-            print(f"\n{Fore.BLUE}{url}:{Style.RESET_ALL}")
+            timeout_suffix = ''
+            redirects = analysis.get('redirects', {}).get(url) or []
+            if redirects and isinstance(redirects[-1], str) and 'timeout in asm' in redirects[-1]:
+                timeout_suffix = f" {Fore.YELLOW}(timeout in asm){Style.RESET_ALL}"
+            print(f"\n{Fore.BLUE}{url}:{Style.RESET_ALL}{timeout_suffix}")
             rows = []
             for name, meta in sorted(res.items()):
                 categories = ', '.join(meta.get('categories', [])) or '—'

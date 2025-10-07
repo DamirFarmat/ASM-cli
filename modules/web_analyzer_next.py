@@ -23,6 +23,7 @@ from colorama import Fore, Style, init
 from tabulate import tabulate
 
 from utils.target_loader import TargetLoader
+from utils.url_resolver import resolve_browser_like_url
 from modules.reporters import MXTHTMLReporter
 
 # Wappalyzer Next доступность
@@ -88,8 +89,8 @@ class WebAnalyzerNext:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             })
             
-            # Выполняем запрос с отслеживанием редиректов
-            response = session.get(current_url, timeout=10, allow_redirects=True)
+            # Выполняем запрос с отслеживанием редиректов, разделяя connect/read таймауты
+            response = session.get(current_url, timeout=(10, 50), allow_redirects=True)
             
             # Получаем историю редиректов
             for resp in response.history:
@@ -100,6 +101,9 @@ class WebAnalyzerNext:
             if response.url not in redirect_chain:
                 redirect_chain.append(response.url)
                 
+        except requests.exceptions.Timeout:
+            # Помечаем таймаут в цепочке
+            redirect_chain.append('timeout in asm')
         except requests.exceptions.RequestException:
             # В случае ошибки возвращаем только исходный URL
             pass
@@ -125,17 +129,32 @@ class WebAnalyzerNext:
                 temp_path = temp_file.name
             
             try:
-                # Запускаем wappalyzer через subprocess
-                result = subprocess.run([
-                    'wappalyzer', 
+                # Запускаем wappalyzer через subprocess с жёстким таймаутом 60 сек
+                proc = subprocess.Popen([
+                    'wappalyzer',
                     '-i', url,
                     '-oJ', temp_path,
-                    '--scan-type', 'full'  # Используем полный режим для лучшего обнаружения
-                ], capture_output=True, text=True, timeout=120)
-                
-                if result.returncode != 0:
+                    '--scan-type', 'full'
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+                try:
+                    stdout, stderr = proc.communicate(timeout=60)
+                except subprocess.TimeoutExpired:
+                    # Жёстко завершаем процесс при таймауте
+                    try:
+                        proc.kill()
+                    finally:
+                        try:
+                            proc.communicate(timeout=5)
+                        except Exception:
+                            pass
+                    # Маркируем таймаут на уровне вызова
+                    setattr(self, '_last_scan_timed_out', True)
                     return None
-                
+
+                if proc.returncode != 0:
+                    return None
+
                 # Читаем результат из временного файла
                 if os.path.exists(temp_path):
                     with open(temp_path, 'r', encoding='utf-8') as f:
@@ -193,19 +212,25 @@ class WebAnalyzerNext:
         if not self._ensure_wappalyzer_next():
             return analysis
 
-        urls = [f"http://{domain}", f"https://{domain}"]
+        # Resolve a single browser-like URL and analyze only it
+        resolved_url = resolve_browser_like_url(domain, timeout_s=10)
+
+        # Получаем цепочку редиректов для отображения
+        redirect_chain = self._follow_redirects(resolved_url)
+        analysis['redirects'][resolved_url] = redirect_chain
+
+        # Анализируем URL с Wappalyzer Next
         per_url: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
-        
-        for url in urls:
-            # Получаем цепочку редиректов для отображения
-            redirect_chain = self._follow_redirects(url)
-            analysis['redirects'][url] = redirect_chain
-            
-            # Анализируем URL с Wappalyzer Next
-            res = self._analyze_single_url_next(url)
-            if res:
-                per_url[url] = res
-                
+        # Сбрасываем флаг таймаута перед запуском
+        setattr(self, '_last_scan_timed_out', False)
+        res = self._analyze_single_url_next(resolved_url)
+        if res:
+            per_url[resolved_url] = res
+        else:
+            # Если был таймаут движка Wappalyzer Next – отразим в цепочке
+            if getattr(self, '_last_scan_timed_out', False):
+                (analysis['redirects'].setdefault(resolved_url, [])).append('timeout in asm')
+
         analysis['by_scheme'] = per_url
 
         # Слить по домену
@@ -234,7 +259,11 @@ class WebAnalyzerNext:
 
         # Вывод по схемам
         for url, res in analysis.get('by_scheme', {}).items():
-            print(f"\n{Fore.BLUE}{url}:{Style.RESET_ALL}")
+            timeout_suffix = ''
+            redirects = analysis.get('redirects', {}).get(url) or []
+            if redirects and isinstance(redirects[-1], str) and 'timeout in asm' in redirects[-1]:
+                timeout_suffix = f" {Fore.YELLOW}(timeout in asm){Style.RESET_ALL}"
+            print(f"\n{Fore.BLUE}{url}:{Style.RESET_ALL}{timeout_suffix}")
             rows = []
             for name, meta in sorted(res.items()):
                 categories = ', '.join(meta.get('categories', [])) or '—'
