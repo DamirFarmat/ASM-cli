@@ -12,6 +12,7 @@ from modules.vuln import VulnEnricher
 from modules.cert import TLSCertAnalyzer
 from utils.target_loader import TargetLoader
 from modules.header_analyzer import HeaderAnalyzer
+from modules.resolve import DNSResolver
 
 
 def read_targets(file_path: str) -> List[str]:
@@ -31,6 +32,7 @@ def main():
     parser.add_argument('--headers', action='store_true', help='Проверка безопасности HTTP заголовков (HSTS, CSP, XFO и др.)')
     parser.add_argument('--vuln', action='store_true', help='Анализ уязвимостей и EOL на основе web JSON отчёта')
     parser.add_argument('--cert', action='store_true', help='Проверка TLS/SSL: версии протокола и срок действия сертификата')
+    parser.add_argument('--resolve', action='store_true', help='Резолв доменных имен в IP и наоборот')
     parser.add_argument('-f', '--file', type=str, help='Путь к файлу с целями (домены/IP)')
     parser.add_argument('--json', action='store_true', help='Сохранить JSON ответы в reports/')
     parser.add_argument('--html', action='store_true', help='Сохранить один HTML-отчет по всем доменам в reports/')
@@ -311,6 +313,18 @@ def main():
             print(_json.dumps({'vuln_summary': summary_json}, ensure_ascii=False, indent=2))
         except Exception:
             pass
+        return
+
+    if args.resolve:
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --resolve укажите -f targets.txt или перечислите цели напрямую')
+
+        client = DNSResolver()
+        client.run(all_targets, json_only=args.json_only)
         return
 
     parser.print_help()
