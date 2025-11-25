@@ -1,32 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "asm-cli"
-version = "0.1.1"
-description = "ASM CLI"
+version = "0.1.0"
+authors = [
+  { name="Your Name", email="you@example.com" },
+]
+description = "ASM - modular passive reconnaissance tool"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
 dependencies = [
-  "requests==2.31.0",
-  "python-dotenv==1.0.1",
-  "colorama==0.4.6",
-  "tabulate==0.9.0",
-  "publicsuffix2==2.20191221",
-  "dnspython==2.6.1",
-  "python-Wappalyzer",
-  "setuptools>=65.0.0",
+    "requests==2.31.0",
+    "python-dotenv==1.0.1",
+    "colorama==0.4.6",
+    "tabulate==0.9.0",
+    "publicsuffix2==2.20191221",
+    "dnspython==2.6.1",
+    "python-Wappalyzer",
+    "wappalyzer",
+    "httpx[http2]==0.27.0",
+    "beautifulsoup4==4.12.3"
 ]
 
 [project.scripts]
 asm = "asm:main"
 
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [tool.setuptools]
-py-modules = ["asm"]
-
-[tool.setuptools.packages.find]
-include = ["modules*", "utils*"]
-exclude = ["reports*", "reports/*"]
-
-
+include-package-data = true

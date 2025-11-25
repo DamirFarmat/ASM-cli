@@ -2,6 +2,7 @@
 import asyncio
 import json
 import re
+import os
 from typing import List, Dict, Any, Set
 from urllib.parse import urljoin
 import httpx
@@ -183,7 +184,11 @@ class JSMiner:
         Загружает правила (регулярные выражения) из файла.
         """
         try:
-            with open('rules.json', 'r', encoding='utf-8') as f:
+            # Строим абсолютный путь к rules.json относительно текущего файла
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            rules_path = os.path.join(base_dir, 'rules.json')
+            
+            with open(rules_path, 'r', encoding='utf-8') as f:
                 rules = json.load(f)
             if self.verbose:
                 print(f"[+] Загружено {len(rules)} правил из rules.json")
