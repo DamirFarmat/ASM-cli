@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Google API Key",
+    "regex": "AIza[0-9A-Za-z\\-_]{35}"
+  },
+  {
+    "name": "Amazon AWS Access Key ID",
+    "regex": "AKIA[0-9A-Z]{16}"
+  },
+  {
+    "name": "GitHub Token",
+    "regex": "ghp_[0-9a-zA-Z]{36}"
+  },
+  {
+    "name": "Generic Password in URL",
+    "regex": "[a-zA-Z]{3,10}://[^/\\s:@]{3,20}:[^/\\s:@]{3,20}@.{1,100}[\"']"
+  },
+  {
+    "name": "Developer Keyword 'TODO'",
+    "regex": "(?i)TODO:.*"
+  },
+  {
+    "name": "Developer Keyword 'FIXME'",
+    "regex": "(?i)FIXME:.*"
+  },
+  {
+    "name": "API Endpoint",
+    "regex": "([\"'])(https|http)://[^/\\s]+/[^\\s]*?api[^\\s]*?\\1"
+  },
+  {
+    "name": "Interesting URL Path",
+    "regex": "([\"'])/[a-zA-Z0-9][a-zA-Z0-9/_-]{4,}[\"']"
+  },
+  {
+    "name": "AWS Secret Access Key",
+    "regex": "(?i)aws(.{0,20})?(?-i)['\\\"][0-9a-zA-Z\\/\\+]{40}['\\\"]"
+  },
+  {
+    "name": "Slack Token",
+    "regex": "xox[p|b|o|a]-[0-9]{12}-[0-9]{12}-[0-9]{12}-[a-z0-9]{32}"
+  },
+  {
+    "name": "Stripe API Key",
+    "regex": "sk_live_[0-9a-zA-Z]{24}"
+  },
+  {
+    "name": "RSA Private Key",
+    "regex": "-----BEGIN RSA PRIVATE KEY-----"
+  },
+  {
+    "name": "JSON Web Token (JWT)",
+    "regex": "ey[A-Za-z0-9-_=]+\\.ey[A-Za-z0-9-_=]+\\.?[A-Za-z0-9-_.+/=]*"
+  },
+  {
+    "name": "Generic Secret/Password",
+    "regex": "(?i)(secret|token|password)['\\\"]?\\s*[:=]\\s*['\\\"][^'\\\"\\s]{8,}['\\\"]"
+  },
+  {
+    "name": "Internal IP Address",
+    "regex": "192\\.168\\.(\\d{1,3})\\.(\\d{1,3})|10\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})|172\\.(1[6-9]|2[0-9]|3[0-1])\\.(\\d{1,3})\\.(\\d{1,3})"
+  }
+]

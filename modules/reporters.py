@@ -1,6 +1,7 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 from datetime import datetime
 import html as htmllib
+import json
 
 class MXTHTMLReporter:
     def __init__(self) -> None:
@@ -126,3 +127,51 @@ tr.timeout {{ background:#f3f4f6; }}
 </body>
 </html>
 """
+
+from colorama import Fore, Style
+
+class JSMinerReporter:
+    """
+    Класс для генерации отчетов для модуля JSMiner.
+    """
+    def to_console(self, findings: List[Dict[str, Any]]):
+        """
+        Выводит находки в консоль в человекочитаемом формате.
+        """
+        if not findings:
+            print(f"\n{Fore.GREEN}[+]{Style.RESET_ALL} Потенциальных секретов не найдено.")
+            return
+
+        # Группируем находки по JS-файлу
+        grouped_findings = {}
+        for f in findings:
+            source = f['source_js']
+            if source not in grouped_findings:
+                grouped_findings[source] = []
+            grouped_findings[source].append(f)
+
+        print(f"\n{Fore.RED}[!!!]{Style.RESET_ALL} Найдены потенциальные секреты:")
+        for source, f_list in grouped_findings.items():
+            print(f"\n{Fore.YELLOW}[+]{Style.RESET_ALL} В файле: {source}")
+            for f in f_list:
+                print(f"  └── {Fore.CYAN}Тип:{Style.RESET_ALL} {f['finding_type']}")
+                print(f"      {Fore.CYAN}Строка:{Style.RESET_ALL} {f['line_number']}")
+                print(f"      {Fore.CYAN}Секрет:{Style.RESET_ALL} {Fore.RED}{Style.BRIGHT}{f['secret']}{Style.RESET_ALL}")
+    
+    def to_json_file(self, findings: List[Dict[str, Any]], output_file: str):
+        """
+        Сохраняет находки в JSON-файл.
+        """
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(findings, f, ensure_ascii=False, indent=2)
+            print(f"\n[+] Отчет сохранен в файл: {output_file}")
+        except IOError as e:
+            print(f"\n[!] Ошибка при сохранении отчета в {output_file}: {e}")
+
+    def to_json_console(self, findings: List[Dict[str, Any]]):
+        """
+        Выводит находки в консоль в формате JSON.
+        """
+        import json
+        print(json.dumps(findings, ensure_ascii=False, indent=2))
