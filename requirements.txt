@@ -8,3 +8,5 @@ python-Wappalyzer
 wappalyzer
 httpx[http2]==0.27.0
 beautifulsoup4==4.12.3
+
+aiohttp

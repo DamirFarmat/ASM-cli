@@ -14,45 +14,37 @@ from utils.target_loader import TargetLoader
 from modules.header_analyzer import HeaderAnalyzer
 from modules.resolve import DNSResolver
 from modules.jsminer import JSMiner
-
+from modules.dnsdump_main import DNSDump
+from colorama import init
 
 def read_targets(file_path: str) -> List[str]:
-    """Использует TargetLoader для загрузки целей из файла."""
     loader = TargetLoader()
     return loader.load_targets(file_path)
-
-
-from colorama import init
 
 def main():
     init(autoreset=True)
     parser = argparse.ArgumentParser(description='ASM - модульное приложение для пассивной разведки')
-    parser.add_argument('--dns', action='store_true', help='Анализ email health через MXToolbox API')
+    parser.add_argument('--resolve', action='store_true', help='Резолв доменных имен в IP и наоборот')
     parser.add_argument('--dns-manual', action='store_true', help='Проверка DNS без API, по локальным правилам')
+    parser.add_argument('--dnsdump', action='store_true', help='Полная DNS-разведка домена (субдомены, записи, Shodan, GeoIP)')
+    parser.add_argument('--network', action='store_true', help='Проверка IP из файла через Shodan API')
+    parser.add_argument('--headers', action='store_true', help='Проверка безопасности HTTP заголовков (HSTS, CSP, XFO и др.)')
     parser.add_argument('--web', action='store_true', help='Комбинированный веб-анализ: технологии + уязвимости/EOL (как --web + --vuln)')
     parser.add_argument('--web-version', action='store_true', help='Только анализ веб-технологий (как раньше --web)')
     parser.add_argument('--web-test', action='store_true', help='Анализ веб-технологий с помощью Wappalyzer Next (современная библиотека с браузерной эмуляцией)')
-    parser.add_argument('--network', action='store_true', help='Проверка IP из файла через Shodan API')
-    parser.add_argument('--headers', action='store_true', help='Проверка безопасности HTTP заголовков (HSTS, CSP, XFO и др.)')
     parser.add_argument('--vuln', action='store_true', help='Анализ уязвимостей и EOL на основе web JSON отчёта')
     parser.add_argument('--cert', action='store_true', help='Проверка TLS/SSL: версии протокола и срок действия сертификата')
-    parser.add_argument('--resolve', action='store_true', help='Резолв доменных имен в IP и наоборот')
     parser.add_argument('-f', '--file', type=str, help='Путь к файлу с целями (домены/IP/URL)')
     parser.add_argument('--json', action='store_true', help='Сохранить JSON ответы в reports/')
     parser.add_argument('--html', action='store_true', help='Сохранить один HTML-отчет по всем доменам в reports/')
     parser.add_argument('--json-only', action='store_true', help='Выводить в терминал только JSON без дополнительных строк')
-
-    # Аргументы для JSMiner
     parser.add_argument('--jsminer', action='store_true', help='Анализ JS-файлов на утечки секретов')
     parser.add_argument('-u', '--url', type=str, help='(JSMiner) Один целевой URL для сканирования')
     parser.add_argument('-o', '--output', type=str, help='(JSMiner) Сохранить результаты в указанный файл (JSON)')
     parser.add_argument('-t', '--threads', type=int, default=10, help='(JSMiner) Количество потоков')
     parser.add_argument('--no-sourcemaps', action='store_true', help='(JSMiner) Отключить поиск sourcemap')
     parser.add_argument('-v', '--verbose', action='store_true', help='Включить подробный вывод процесса работы')
-
-    # Позиционные цели: можно передать домены/IP напрямую без файла
     parser.add_argument('targets', nargs='*', help='Цели напрямую (домены, IP или URL), напр.: example.com 8.8.8.8')
-    # Опции для --vuln
     parser.add_argument('-i', '--input', type=str, help='Путь к web_analyzer_report_*.json для --vuln')
     parser.add_argument('--json-out', type=str, help='Куда сохранить обогащённый JSON (для --vuln)')
     parser.add_argument('--csv-out', type=str, help='Куда сохранить CSV сводку (для --vuln)')
@@ -360,6 +352,33 @@ def main():
             targets,
             output_file=args.output,
             json_only=args.json_only
+        ))
+        return
+        
+    if args.dnsdump:
+        import asyncio
+        if args.file:
+            all_targets = read_targets(args.file)
+        else:
+            all_targets = args.targets or []
+        if not all_targets:
+            parser.error('Для --dnsdump укажите -f targets.txt или перечислите домены напрямую')
+        
+        loader = TargetLoader()
+        domains: List[str] = [
+            t for t in all_targets
+            if loader._is_valid_domain(t) and not loader._is_valid_ip(t)
+        ]
+        
+        if not domains:
+            print('Не найдено валидных доменов для --dnsdump')
+            return
+
+        client = DNSDump()
+        asyncio.run(client.run_parallel(
+            domains,
+            json_only=args.json_only,
+            output_file=args.output
         ))
         return
 
