@@ -15,7 +15,7 @@ class JSMiner:
     Модуль для обнаружения секретов в JavaScript-файлах на веб-сайтах.
     """
 
-    def __init__(self, threads: int = 10, no_sourcemaps: bool = False, verbose: bool = False):
+    def __init__(self, threads: int = 10, no_sourcemaps: bool = False, verbose: bool = False, cookie: str = None):
         """
         Инициализация JSMiner.
 
@@ -23,10 +23,12 @@ class JSMiner:
             threads (int): Количество одновременных потоков.
             no_sourcemaps (bool): Отключить ли поиск sourcemaps.
             verbose (bool): Включить ли подробный вывод.
+            cookie (str, optional): Значение Cookie для HTTP-запросов.
         """
         self.threads = threads
         self.no_sourcemaps = no_sourcemaps
         self.verbose = verbose
+        self.cookie = cookie
         self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         self.rules = self._load_rules()
         self.reporter = JSMinerReporter()
@@ -43,9 +45,13 @@ class JSMiner:
         """
         if self.verbose:
             print(f"[+] JSMiner запущен с {self.threads} потоками для {len(targets)} целей.")
+        
+        headers = {'User-Agent': self.user_agent}
+        if self.cookie:
+            headers['Cookie'] = self.cookie
 
         # Асинхронный клиент для HTTP-запросов
-        async with httpx.AsyncClient(http2=True, verify=False, headers={'User-Agent': self.user_agent}, timeout=15) as client:
+        async with httpx.AsyncClient(http2=True, verify=False, headers=headers, timeout=15) as client:
             # Создаем задачи для каждой цели
             tasks = [self._fetch_and_parse_page(client, target) for target in targets]
             results = await asyncio.gather(*tasks, return_exceptions=True)

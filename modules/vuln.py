@@ -99,7 +99,6 @@ class VulnEnricher:
             "keywordSearch": f"{product_name} {version}",
             "startIndex": "0",
             "resultsPerPage": str(max_items),
-            "pubStartDate": "2010-01-01T00:00:00.000",
         }
         headers = {}
         if self.nvd_api_key:
@@ -196,5 +195,4 @@ class VulnEnricher:
                             ])
                         )
             csv_out.write_text("\n".join(rows), encoding="utf-8")
-
 

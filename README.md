@@ -1,218 +1,179 @@
-# ASM - Модульное приложение для пассивной разведки
+# ASM CLI
 
-Модульное CLI-приложение для пассивной разведки доменов и IP-адресов: DNS/Email health, веб‑технологии (в т.ч. Wappalyzer Next), проверка security‑заголовков, сетевая разведка, TLS/SSL.
+Модульный CLI-инструмент для пассивной разведки доменов, IP и URL.
 
-## Возможности
+## Что умеет
 
-### 🔍 DNS-анализ через MXToolbox API
-- Проверка Email Health и Domain Health
-- Анализ SPF, DMARC, DKIM записей
-- Интеграция с MXToolbox API
+- DNS/Email health без внешних API (`--dns-manual`)
+- Глубокая DNS-разведка с сабдоменами, ASN, Geo, InternetDB (`--dnsdump`)
+- DNS resolve/reverse (`--resolve`)
+- Анализ HTTP security headers (`--headers`)
+- Fingerprint веб-технологий:
+  - `--web-version` (python-Wappalyzer)
+  - `--web-test` (Wappalyzer Next CLI)
+  - `--web` (технологии + CVE/EOL enrichment)
+- CVE/EOL enrichment по web JSON (`--vuln`)
+- Поиск CVE по ПО и версии (`--cve`)
+- TLS/SSL аудит сертификата и протоколов (`--cert`)
+- Поиск секретов в JS (`--jsminer`)
+- Поиск поддоменов через Yandex dork (`--dork`)
 
-### 🛠️ Ручной DNS-анализ
-- Проверка DNS без внешних API
-- Анализ NS-серверов, SOA-записей
-- Проверка конфигурации DNS-зоны
-- Валидация SPF, DMARC, DKIM
+## Быстрый старт
 
-### 🌐 Веб‑анализаторы
-- `--web-version`: анализ веб‑технологий через python‑Wappalyzer (сканирует http/https, объединяет результаты и редиректы)
-- `--web-test`: анализ через Wappalyzer Next (CLI + браузерная эмуляция) с более точными отпечатками
-- Определение CMS, фреймворков, серверов. Генерация HTML‑отчетов
+### Установка
 
-### 🛡️ HTTP Security Headers
-- `--header`: проверка security‑заголовков (HSTS, CSP, X‑Frame‑Options, X‑Content‑Type‑Options, Referrer‑Policy, Permissions‑Policy, COOP/COEP/CORP, X‑XSS‑Protection)
-- Консольная таблица, объединённые находки по http/https без дублей, цветовой HTML‑отчёт (missing/warning/passed)
+Вариант 1 (рекомендуется):
 
-### 🌍 Сетевая разведка
-- Проверка IP-адресов через InternetDB (Shodan)
-- Анализ открытых портов и сервисов
-- Информация о геолокации и организации
-
-## Установка
-
-Вариант 1 (рекомендуется, системный PATH):
 ```bash
 pipx install .
-# После установки команда доступна как:
-asm --help
+asm -h
 ```
 
 Вариант 2 (локально):
+
 ```bash
-python -m venv .venv && . .venv/Scripts/activate  # Windows PowerShell
+python -m venv .venv
+. .venv/Scripts/activate
 pip install -r requirements.txt
-python asm.py --help
+python asm.py -h
 ```
 
-### Требования для веб‑анализаторов
-- `--web-version`: использует python‑Wappalyzer (ставится из `requirements.txt`). При ошибках `pkg_resources` обновите инструменты:
-  ```bash
-  python -m pip install --upgrade pip setuptools wheel
-  ```
-- `--web-test` (Wappalyzer Next):
-  - Требуется Firefox и geckodriver
-  - Требуется установленный CLI `wappalyzer` (лучше глобально):
-    ```bash
-    pipx install wappalyzer
-    # проверка
-    wappalyzer --help
-    ```
-  - Если используете локальное окружение, убедитесь, что `wappalyzer` доступен в PATH
+### Файл целей
 
-### Настройка API ключей
-Создайте файл `.env` в корне проекта:
+Поддерживаются `.txt` и `.csv` (по одной цели в строке):
 
-```env
-# MXToolbox API (для --dns)
-MXTOOLBOX_API_KEY=ВАШ_КЛЮЧ_ОТ_MXTOOLBOX
-
-# InternetDB не требует API ключа (бесплатный сервис)
+```txt
+example.com
+8.8.8.8
+https://example.org
 ```
 
 ## Использование
 
-### Подготовка целей
-Создайте файл `targets.txt` с целями (по одному на строку):
-
-```txt
-# Домены для DNS и веб-анализа
-example.com
-google.com
-github.com
-
-# IP-адреса для сетевой разведки
-8.8.8.8
-1.1.1.1
-```
-
-### DNS-анализ через MXToolbox API
+### Основные режимы
 
 ```bash
-# Базовый анализ
-python asm.py --dns -f targets.txt
+# DNS/Email checks без API
+asm --dns-manual -f targets.txt --html --json
 
-# С сохранением JSON ответов
-python asm.py --dns -f targets.txt --json
+# Resolve/reverse
+asm --resolve -f targets.txt
 
-# С генерацией HTML-отчета
-python asm.py --dns -f targets.txt --html
-```
+# Глубокая DNS-разведка
+asm --dnsdump -f targets.txt -o reports/dnsdump.json
 
-### Ручной DNS-анализ (без API)
+# Сетевая разведка IP
+asm --network 8.8.8.8 1.1.1.1 --html --json
 
-```bash
-# Базовый анализ из файла
-python asm.py --dns-manual -f targets.txt
+# HTTP Security Headers
+asm --headers example.com --html
 
-# Базовый анализ с прямой передачей домена
-python asm.py --dns-manual example.com
+# Технологии (python-Wappalyzer)
+asm --web-version example.com --html
 
-# С генерацией HTML-отчета
-python asm.py --dns-manual -f targets.txt --html
-```
-
-**Проверяемые параметры:**
-- Количество и доступность NS-серверов
-- Авторитативность DNS-серверов
-- Конфигурация SOA-записей
-- SPF, DMARC, DKIM записи
-- Географическое распределение NS-серверов
-- Проверка открытых рекурсивных DNS
-
-### Веб‑анализаторы
-
-```bash
-# Комбинированный анализ (из файла или напрямую)
-python asm.py --web -f targets.txt
-python asm.py --web example.com
-
-# Только анализ технологий (python‑Wappalyzer)
-python asm.py --web-version -f targets.txt
-python asm.py --web-version example.com
-
-# С генерацией HTML-отчетов
-python asm.py --web -f targets.txt --html
-python asm.py --web-version -f targets.txt --html
-
-# Анализ Wappalyzer Next (требует wappalyzer, Firefox, geckodriver)
-python asm.py --web-test -f targets.txt
-python asm.py --web-test example.com --html
-```
-
-### 📦 Анализ уязвимостей и EOL по веб-отчёту
-
-Использует JSON из веб-модуля и обогащает его данными об уязвимостях (NVD) и статусе поддержки/окончания жизни (endoflife.date).
-
-```bash
-# Обогащение с сохранением JSON и CSV
-python asm.py --vuln -i reports/web_analyzer_report_YYYYMMDD_HHMMSS.json \
-  --json-out reports/web_enriched.json --csv-out reports/web_enriched.csv
-
-# Можно указать API ключ NVD для бОльших лимитов
-python asm.py --vuln -i reports/web_analyzer_report_*.json --nvd-api-key YOUR_KEY
-
-# Если выходные пути не указаны, будет выведена краткая сводка в консоль
-python asm.py --vuln -i reports/web_analyzer_report_*.json
-```
-
-Источник данных:
-- CVE: NVD (`https://services.nvd.nist.gov/rest/json/cves/2.0`)
-- EOL: `https://endoflife.date/api/<product>.json`
-
-
-**Определяемые технологии:**
-- Веб-серверы (Apache, Nginx, IIS)
-- CMS (WordPress, Drupal, Joomla)
-- Фреймворки (Laravel, Django, Rails)
-- Языки программирования
-- Базы данных
-- CDN и прокси-серверы
-
-### Сетевая разведка IP-адресов
-
-```bash
-# Базовый анализ (из файла или напрямую)
-python asm.py --network -f targets.txt
-python asm.py --network 8.8.8.8 1.1.1.1
-
-# С сохранением JSON ответов
-python asm.py --network -f targets.txt --json
-
-# С генерацией HTML-отчета
-python asm.py --network -f targets.txt --html
-```
-
-### 🔐 Проверка TLS/SSL сертификатов
-
-Проверяет поддерживаемые версии TLS (1.0/1.1/1.2/1.3) и срок действия сертификата (предупреждение, если истекает в течение 30 дней; ошибка, если просрочен). Формирует консольный вывод, JSON и/или HTML.
-
-```bash
-# Базовая проверка сертификатов (из файла или напрямую)
-python asm.py --cert -f targets.txt
-python asm.py --cert example.com github.com
-
-# С HTML и JSON отчётами
-python asm.py --cert -f targets.txt --html --json
-```
-
-**Получаемая информация:**
-- Открытые порты и сервисы
-- Географическое расположение
-- Информация об организации
-- Технические детали
-
-### ⚠️ Подсказки и устранение проблем
-- `python‑Wappalyzer`: ошибка `No module named 'pkg_resources'` — обновите `setuptools` (`python -m pip install --upgrade pip setuptools wheel`)
-- `wappalyzer` (Next): убедитесь, что установлен `wappalyzer` и доступен в PATH, а также установлены Firefox и geckodriver
-- Сети/SSL: при проблемах с доступом к сайту проверьте прокси/файрвол
-
-## Запуск из PATH (pipx)
-После `pipx install .` команда будет доступна как `asm` из любого места:
-```bash
-asm --help
-asm --dns -f targets.txt --html
+# Технологии (Wappalyzer Next)
 asm --web-test example.com --html
-asm --header example.com --html
+
+# Комбинированный web + vuln
+asm --web example.com --html
+
+# Отдельный vuln enrichment из JSON
+asm --vuln -i reports/web_analyzer_report_YYYYMMDD_HHMMSS.json \
+  --json-out reports/web_enriched.json \
+  --csv-out reports/web_enriched.csv
+
+# TLS/SSL аудит
+asm --cert example.com --html --json
+
+# JS Miner
+asm --jsminer -u https://example.com -o reports/jsminer.json --threads 20
+
+# Поиск поддоменов через Yandex dork
+asm --dork example.com --dork-pages 3 -o reports/dork.json
+
+# CVE lookup по ПО и версии
+asm --cve -s nginx -v 1.28.0 -o reports/cve_nginx_1.28.0.json
 ```
 
+### Форматы вывода
+
+- `--html`: сохранить HTML-отчёт в `reports/`
+- `--json`: сохранить JSON-отчёты (для поддерживающих модулей)
+- `--json-only`: печатать только JSON в stdout
+- `-o/--output`: явный путь файла для `--dnsdump`, `--jsminer`, `--dork` и `--cve`
+
+## Требования по окружению
+
+### Базовые
+
+- Python >= 3.8
+- Установленные зависимости из `requirements.txt`
+
+### Для `--web-test` (Wappalyzer Next)
+
+- доступная в PATH команда `wappalyzer`
+- Firefox
+- geckodriver
+
+Проверка:
+
+```bash
+wappalyzer --help
+```
+
+### API ключи
+
+Сейчас для основных режимов обязательные ключи не требуются.
+
+Опционально:
+
+- `--nvd-api-key` для повышения лимитов NVD в `--vuln`/`--web`
+
+Пример `.env`:
+
+```env
+NVD_API_KEY=your_nvd_key
+```
+
+## Карта модулей (проверено по текущему коду)
+
+| Модуль | Роль | Статус в CLI |
+|---|---|---|
+| `asm.py` | Главный entrypoint/роутинг флагов | Активен |
+| `utils/target_loader.py` | Чтение/валидация целей из файла | Активен |
+| `utils/url_resolver.py` | Browser-like URL resolve (https/http + redirects) | Активен |
+| `modules/resolve.py` | DNS resolve/reverse | Активен (`--resolve`) |
+| `modules/dns_manual.py` | DNS/Email checks без API | Активен (`--dns-manual`) |
+| `modules/dnsdump_main.py` + `modules/dnsdump/*` | Глубокая DNS-разведка | Активен (`--dnsdump`) |
+| `modules/network.py` | InternetDB анализ IP | Активен (`--network`) |
+| `modules/header_analyzer.py` | HTTP security headers | Активен (`--headers`) |
+| `modules/web_analyzer.py` | Fingerprint через python-Wappalyzer | Активен (`--web-version`, `--web`) |
+| `modules/web_analyzer_next.py` | Fingerprint через Wappalyzer Next CLI | Активен (`--web-test`) |
+| `modules/vuln.py` | CVE/EOL enrichment (NVD + endoflife.date) | Активен (`--vuln`, `--web`) |
+| `modules/cve.py` | CVE lookup по ПО/версии через NVD | Активен (`--cve`) |
+| `modules/cert.py` | TLS/SSL анализ | Активен (`--cert`) |
+| `modules/jsminer.py` | Поиск секретов в JS | Активен (`--jsminer`) |
+| `modules/reporters.py` | HTML/console репортеры | Активен (вспомогательный) |
+| `modules/mxtoolbox_dns.py` | Интеграция с MXToolbox API | В кодовой базе, но не подключен к CLI-флагу |
+
+## Важные замечания
+
+- Файл `pyproject.toml` содержит заглушки в metadata (`Your Name`, `you@example.com`).
+- В текущем CLI режимы задаются флагами (не subcommands).
+- Для `--jsminer` опция `--no-sourcemaps` сейчас помечена как резервная (в коде sourcemap-поиск не реализован).
+
+## Разработка
+
+Проверка синтаксиса:
+
+```bash
+python -m compileall asm.py modules utils
+```
+
+Проверка help:
+
+```bash
+asm -h
+# или
+python asm.py -h
+```
